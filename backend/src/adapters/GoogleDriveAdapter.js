@@ -20,6 +20,9 @@ export class GoogleDriveAdapter extends BaseCloudAdapter {
 			starred: true,
 			rename: true,
 			delete: true,
+			trash: true,
+			move: true,
+			copy: true,
 		};
 	}
 
@@ -327,10 +330,99 @@ export class GoogleDriveAdapter extends BaseCloudAdapter {
 	}
 
 	async deleteFile(fileRecord) {
+		// Soft delete: move to Google Drive trash so the file stays recoverable.
+		const drive = await this.getDriveClient();
+		await drive.files.update({
+			fileId: fileRecord.remote_file_id,
+			requestBody: { trashed: true },
+			fields: 'id, name, trashed',
+		});
+	}
+
+	async restoreFile(fileRecord) {
+		const drive = await this.getDriveClient();
+		await drive.files.update({
+			fileId: fileRecord.remote_file_id,
+			requestBody: { trashed: false },
+			fields: 'id, name, trashed',
+		});
+	}
+
+	async purgeFile(fileRecord) {
 		const drive = await this.getDriveClient();
 		await drive.files.delete({
 			fileId: fileRecord.remote_file_id,
 		});
+	}
+
+	async listTrash() {
+		const drive = await this.getDriveClient();
+		const items = [];
+		let pageToken;
+		do {
+			const response = await drive.files.list({
+				q: 'trashed = true',
+				fields: 'nextPageToken, files(id, name, mimeType, size, parents, createdTime, modifiedTime, trashed, owners(displayName,emailAddress))',
+				pageSize: 200,
+				pageToken,
+			});
+			items.push(...(response.data.files || []));
+			pageToken = response.data.nextPageToken;
+		} while (pageToken);
+		return items.map((file) => ({
+			remote_file_id: file.id,
+			file_name: file.name,
+			is_folder: file.mimeType === 'application/vnd.google-apps.folder',
+			size: Number(file.size || 0),
+			mime_type: file.mimeType,
+			remote_parent_id: Array.isArray(file.parents) ? file.parents[0] : null,
+			remote_created_time: file.createdTime || null,
+			remote_modified_time: file.modifiedTime || null,
+			owner_email: file.owners?.[0]?.emailAddress || this.account.email,
+			capabilities: {
+				starred: true,
+				rename: false,
+				delete: true,
+			},
+		}));
+	}
+
+	async moveFile(fileRecord, nextRemoteParentId) {
+		const drive = await this.getDriveClient();
+		const current = await drive.files.get({
+			fileId: fileRecord.remote_file_id,
+			fields: 'parents',
+		});
+		const previousParents = (current.data.parents || []).join(',');
+		await drive.files.update({
+			fileId: fileRecord.remote_file_id,
+			addParents: nextRemoteParentId,
+			removeParents: previousParents,
+			fields: 'id, parents',
+		});
+	}
+
+	async copyFile(fileRecord, { name, remoteParentId }) {
+		const drive = await this.getDriveClient();
+		const response = await drive.files.copy({
+			fileId: fileRecord.remote_file_id,
+			requestBody: {
+				name: name || `${fileRecord.file_name} (copy)`,
+				...(remoteParentId ? { parents: [remoteParentId] } : {}),
+			},
+			fields: 'id, name, mimeType, size, parents, createdTime, modifiedTime',
+		});
+		const file = response.data;
+		return {
+			remote_file_id: file.id,
+			file_name: file.name,
+			is_folder: false,
+			size: Number(file.size || 0),
+			mime_type: file.mimeType,
+			remote_parent_id: Array.isArray(file.parents) ? file.parents[0] : null,
+			remote_created_time: file.createdTime || null,
+			remote_modified_time: file.modifiedTime || null,
+		};
 	}
 
 	async getFileDetails(fileRecord) {

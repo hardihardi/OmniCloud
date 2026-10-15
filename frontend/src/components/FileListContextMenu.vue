@@ -1,7 +1,7 @@
 <script setup>
 import { computed } from 'vue';
 import { useI18n } from 'vue-i18n';
-import { IconFolder, IconStar, IconStarFilled, IconEye, IconDownload, IconEdit, IconInfoCircle, IconTrash } from '@tabler/icons-vue';
+import { IconFolder, IconStar, IconStarFilled, IconEye, IconDownload, IconEdit, IconInfoCircle, IconTrash, IconArrowsMove, IconCopy } from '@tabler/icons-vue';
 
 const { t } = useI18n();
 
@@ -15,12 +15,14 @@ const props = defineProps({
 	isPrimaryStarred: { type: Boolean, default: false },
 	canDownload: { type: Boolean, default: false },
 	canRename: { type: Boolean, default: false },
+	canMove: { type: Boolean, default: false },
+	canCopy: { type: Boolean, default: false },
 	canShowDetails: { type: Boolean, default: true },
 	canOpenFolder: { type: Boolean, default: false },
 	canDelete: { type: Boolean, default: true },
 });
 
-const emit = defineEmits(['open-folder', 'preview', 'toggle-star', 'download', 'rename', 'show-details', 'delete', 'close']);
+const emit = defineEmits(['open-folder', 'preview', 'toggle-star', 'download', 'rename', 'show-details', 'delete', 'move', 'copy', 'close']);
 
 const showOpen = computed(() => props.canOpenFolder && props.selectedCount === 1 && Boolean(props.primarySelectedFile?.is_folder));
 const showPreview = computed(() => props.selectedCount === 1 && !props.primarySelectedFile?.is_folder);
@@ -47,6 +49,12 @@ function handleDetails() {
 function handleDelete() {
 	emit('delete');
 }
+function handleMove() {
+	emit('move');
+}
+function handleCopy() {
+	emit('copy');
+}
 </script>
 
 <template>
@@ -67,9 +75,17 @@ function handleDelete() {
 			<IconDownload :size="17" :stroke="2" />
 			<span>{{ t('common.download') }}</span>
 		</button>
-		<button v-if="canRename" type="button" class="flex w-full items-center gap-3 px-4 py-3 text-left text-sm text-[#202124] hover:bg-[#f8fafd] disabled:cursor-not-allowed disabled:opacity-50 dark:text-slate-100 dark:hover:bg-slate-700/70" :disabled="!canRename" @click="handleRename">
+		<button v-if="canRename" type="button" class="flex w-full items-center gap-3 px-4 py-3 text-left text-sm text-[#202124] hover:bg-[#f8fafd] disabled:cursor-not-allowed disabled:opacity-50 dark:text-slate-100 dark:hover:bg-slate-700/70" :disabled="!canRename" :aria-label="t('common.rename')" @click="handleRename">
 			<IconEdit :size="17" :stroke="2" />
 			<span>{{ t('common.rename') }}</span>
+		</button>
+		<button v-if="canMove && selectedCount === 1" type="button" class="flex w-full items-center gap-3 px-4 py-3 text-left text-sm text-[#202124] hover:bg-[#f8fafd] dark:text-slate-100 dark:hover:bg-slate-700/70" :aria-label="t('drive.move')" @click="handleMove">
+			<IconArrowsMove :size="17" :stroke="2" />
+			<span>{{ t('drive.move') }}</span>
+		</button>
+		<button v-if="canCopy && selectedCount === 1" type="button" class="flex w-full items-center gap-3 px-4 py-3 text-left text-sm text-[#202124] hover:bg-[#f8fafd] dark:text-slate-100 dark:hover:bg-slate-700/70" :aria-label="t('drive.copy')" @click="handleCopy">
+			<IconCopy :size="17" :stroke="2" />
+			<span>{{ t('drive.copy') }}</span>
 		</button>
 		<button type="button" class="flex w-full items-center gap-3 px-4 py-3 text-left text-sm text-[#202124] hover:bg-[#f8fafd] disabled:cursor-not-allowed disabled:opacity-50 dark:text-slate-100 dark:hover:bg-slate-700/70" :disabled="!canShowDetails" @click="handleDetails">
 			<IconInfoCircle :size="17" :stroke="2" />
@@ -79,5 +95,6 @@ function handleDelete() {
 			<IconTrash :size="17" :stroke="2" />
 			<span>{{ t('common.delete') }}</span>
 		</button>
+		<slot name="actions" />
 	</div>
 </template>

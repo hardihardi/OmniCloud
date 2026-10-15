@@ -61,6 +61,8 @@ db.exec(`
     remote_parent_id TEXT,
     remote_created_time TEXT,
     remote_modified_time TEXT,
+    deleted_at TEXT,
+    original_path TEXT,
     created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY(cloud_account_id) REFERENCES cloud_accounts(id) ON DELETE CASCADE,
@@ -97,4 +99,20 @@ db.exec(`
     ON file_metadata(user_id, cloud_account_id);
   CREATE UNIQUE INDEX IF NOT EXISTS idx_user_settings_user_key
     ON user_settings(user_id, key);
+`);
+
+// Migration: soft-delete (trash) support on file_metadata.
+// Existing installs keep their data; fresh installs get the columns via CREATE TABLE above.
+function ensureColumn(table, column, ddl) {
+  const columns = db.prepare(`PRAGMA table_info(${table})`).all().map((c) => c.name);
+  if (!columns.includes(column)) {
+    db.exec(`ALTER TABLE ${table} ADD COLUMN ${ddl}`);
+  }
+}
+
+ensureColumn('file_metadata', 'deleted_at', "deleted_at TEXT");
+ensureColumn('file_metadata', 'original_path', "original_path TEXT");
+
+db.exec(`
+  CREATE INDEX IF NOT EXISTS idx_file_deleted_at ON file_metadata(user_id, deleted_at);
 `);

@@ -4,6 +4,7 @@ import MyDriveView from '../views/MyDriveView.vue';
 import RecentView from '../views/RecentView.vue';
 import SharedWithMeView from '../views/SharedWithMeView.vue';
 import StarredView from '../views/StarredView.vue';
+import TrashView from '../views/TrashView.vue';
 import QuotaView from '../views/QuotaView.vue';
 import LoginView from '../views/auth/LoginView.vue';
 import RegisterView from '../views/auth/RegisterView.vue';
@@ -48,6 +49,11 @@ const router = createRouter({
 			path: '/starred',
 			name: 'starred',
 			component: StarredView,
+		},
+		{
+			path: '/trash',
+			name: 'trash',
+			component: TrashView,
 		},
 		{
 			path: '/quota',

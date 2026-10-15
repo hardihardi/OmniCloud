@@ -14,6 +14,7 @@ import FileListGridCard from '../components/FileListGridCard.vue';
 import FileListContextMenu from '../components/FileListContextMenu.vue';
 import FilePreviewModal from '../components/FilePreviewModal.vue';
 import FileDetailsModal from '../components/FileDetailsModal.vue';
+import FolderPickerModal from '../components/FolderPickerModal.vue';
 import LoadingState from '../components/LoadingState.vue';
 import { useIncrementalRender } from '../composables/useIncrementalRender';
 import { useFileListView } from '../composables/useFileListView';
@@ -38,6 +39,54 @@ const folderInputRef = ref(null);
 const lastObservedSyncAt = ref('');
 const highlightedFileId = ref(null);
 const highlightTimeout = ref(null);
+
+// Move / Copy state
+const isFolderPickerOpen = ref(false);
+const folderPickerMode = ref('move');
+const moveCopyError = ref('');
+const moveCopySuccess = ref('');
+const isMoveCopyBusy = ref(false);
+
+function requestMove() {
+	if (!primarySelectedFile.value || primarySelectedFile.value.is_folder) return;
+	folderPickerMode.value = 'move';
+	moveCopyError.value = '';
+	moveCopySuccess.value = '';
+	isFolderPickerOpen.value = true;
+	closeContextMenu();
+}
+
+function requestCopy() {
+	if (!primarySelectedFile.value || primarySelectedFile.value.is_folder) return;
+	folderPickerMode.value = 'copy';
+	moveCopyError.value = '';
+	moveCopySuccess.value = '';
+	isFolderPickerOpen.value = true;
+	closeContextMenu();
+}
+
+async function handleMoveCopyConfirm({ targetPath }) {
+	const file = primarySelectedFile.value;
+	if (!file) return;
+	isMoveCopyBusy.value = true;
+	moveCopyError.value = '';
+	try {
+		if (folderPickerMode.value === 'move') {
+			await api.moveFile(file.id, { targetPath });
+			moveCopySuccess.value = t('drive.moveSuccess');
+			clearSelection();
+		} else {
+			await api.copyFile(file.id, { targetPath });
+			moveCopySuccess.value = t('drive.copySuccess');
+		}
+		await refreshCurrentFolder();
+		isFolderPickerOpen.value = false;
+	} catch (error) {
+		moveCopyError.value = error.message || 'Action failed';
+	} finally {
+		isMoveCopyBusy.value = false;
+	}
+}
 
 const view = useFileListView({
 	sourceFiles: computed(() => fileTreeStore.filteredFiles),
@@ -401,7 +450,12 @@ onBeforeUnmount(() => {
 				<LoadingState v-if="actionInProgress" variant="overlay" :message="actionLabel || t('drive.processing')" />
 			</div>
 
-			<FileListContextMenu :context-menu-ref="contextMenuRef" :context-menu="contextMenu" :selected-count="selectedCount" :primary-selected-file="primarySelectedFile" :can-preview="canPreviewSelection" :can-toggle-star="canToggleStarSelection" :is-primary-starred="isPrimarySelectedStarred" :can-download="canDownloadSelection" :can-rename="canRenameSelection" :can-show-details="selectedCount === 1" :can-open-folder="canOpenSelection" @open-folder="openSelectedItem" @preview="openPreview" @toggle-star="toggleSelectedFileStar" @download="downloadSelection" @rename="renameSelectedFile" @show-details="showSelectedFileDetails" @delete="deleteSelectedFile" @close="closeContextMenu" />
+			<FileListContextMenu :context-menu-ref="contextMenuRef" :context-menu="contextMenu" :selected-count="selectedCount" :primary-selected-file="primarySelectedFile" :can-preview="canPreviewSelection" :can-toggle-star="canToggleStarSelection" :is-primary-starred="isPrimarySelectedStarred" :can-download="canDownloadSelection" :can-rename="canRenameSelection" :can-move="true" :can-copy="true" :can-show-details="selectedCount === 1" :can-open-folder="canOpenSelection" @open-folder="openSelectedItem" @preview="openPreview" @toggle-star="toggleSelectedFileStar" @download="downloadSelection" @rename="renameSelectedFile" @show-details="showSelectedFileDetails" @delete="deleteSelectedFile" @move="requestMove" @copy="requestCopy" @close="closeContextMenu" />
+
+			<FolderPickerModal :is-open="isFolderPickerOpen" :mode="folderPickerMode" :file="primarySelectedFile" @close="isFolderPickerOpen = false" @confirm="handleMoveCopyConfirm" />
+
+			<p v-if="moveCopySuccess && !isFolderPickerOpen" class="mb-3 rounded-2xl bg-[#e6f4ea] px-4 py-3 text-sm text-[#137333] dark:bg-emerald-950/40 dark:text-emerald-300" role="status">{{ moveCopySuccess }}</p>
+			<p v-if="moveCopyError" class="mb-3 rounded-2xl bg-[#fce8e6] px-4 py-3 text-sm text-[#c5221f] dark:bg-red-950/40 dark:text-red-300" role="alert">{{ moveCopyError }}</p>
 
 			<FileDetailsModal :file="detailsFile" :is-open="isDetailsOpen" :is-folder="detailsFile?.is_folder" :provider-label-fn="providerLabel" @close="closeDetails" />
 			<FilePreviewModal :file="previewFile" :is-open="isPreviewOpen" :is-loading="isPreviewLoading" @close="closePreview" @loaded="handlePreviewLoaded" @failed="handlePreviewFailed" />

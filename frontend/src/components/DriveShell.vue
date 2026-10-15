@@ -271,6 +271,7 @@ const navItems = computed(() => [
 	{ id: 'shared', label: t('nav.shared'), icon: IconUsers, activeIcon: IconUserFilled, to: '/shared-with-me' },
 	{ id: 'recent', label: t('nav.recent'), icon: IconClockHour4, activeIcon: IconClockHour4Filled, to: '/recent' },
 	{ id: 'starred', label: t('nav.starred'), icon: IconStar, activeIcon: IconStarFilled, to: '/starred' },
+	{ id: 'trash', label: t('nav.trash'), icon: IconTrash, activeIcon: IconTrash, to: '/trash' },
 	{ id: 'storage', label: t('nav.storage'), icon: IconCloud, activeIcon: IconCloudFilled, to: '/quota' },
 ]);
 

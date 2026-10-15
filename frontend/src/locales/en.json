@@ -172,7 +172,17 @@
 		"folder": "Folder",
 		"created": "Created",
 		"provider": "Provider",
-		"remoteId": "Remote ID"
+		"remoteId": "Remote ID",
+		"move": "Move to...",
+		"copy": "Make a copy",
+		"moveTitle": "Move file",
+		"copyTitle": "Copy file",
+		"moveSuccess": "File moved successfully.",
+		"copySuccess": "Copy created successfully.",
+		"chooseFolder": "Choose destination folder",
+		"rootFolder": "My Drive (root)",
+		"moveHere": "Move here",
+		"copyHere": "Copy here"
 	},
 	"quota": {
 		"title": "Storage",
@@ -419,5 +429,19 @@
 		"notAvailable": "Preview is not available for this file type.",
 		"document": "Document preview",
 		"failed": "Preview failed to load. Some provider files are not compatible with lightweight preview."
+	},
+	"trash": {
+		"restore": "Restore",
+		"restoring": "Restoring...",
+		"restoreFailed": "Failed to restore the file.",
+		"deleteForever": "Delete forever",
+		"deleteForeverConfirm": "Permanently delete this item? This cannot be undone.",
+		"deleteFailed": "Failed to delete permanently.",
+		"deleting": "Deleting...",
+		"empty": "Empty trash",
+		"emptyConfirm": "Permanently delete ALL items in trash? This cannot be undone.",
+		"emptying": "Emptying trash...",
+		"emptyState": "Trash is empty.",
+		"hint": "Deleted items are moved to trash and can still be restored."
 	}
 }

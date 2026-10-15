@@ -172,7 +172,17 @@
 		"folder": "Folder",
 		"created": "Dibuat",
 		"provider": "Provider",
-		"remoteId": "ID jarak jauh"
+		"remoteId": "ID jarak jauh",
+		"move": "Pindahkan ke...",
+		"copy": "Buat salinan",
+		"moveTitle": "Pindahkan file",
+		"copyTitle": "Buat salinan file",
+		"moveSuccess": "File berhasil dipindahkan.",
+		"copySuccess": "Salinan berhasil dibuat.",
+		"chooseFolder": "Pilih folder tujuan",
+		"rootFolder": "Drive Saya (root)",
+		"moveHere": "Pindahkan ke sini",
+		"copyHere": "Salin ke sini"
 	},
 	"quota": {
 		"title": "Penyimpanan",
@@ -419,5 +429,19 @@
 		"notAvailable": "Preview belum tersedia untuk tipe file ini.",
 		"document": "Preview dokumen",
 		"failed": "Preview gagal dimuat. Beberapa file provider memang tidak kompatibel untuk preview ringan."
+	},
+	"trash": {
+		"restore": "Pulihkan",
+		"restoring": "Memulihkan...",
+		"restoreFailed": "Gagal memulihkan file.",
+		"deleteForever": "Hapus permanen",
+		"deleteForeverConfirm": "Hapus permanen item ini? Tindakan ini tidak bisa dibatalkan.",
+		"deleteFailed": "Gagal menghapus permanen.",
+		"deleting": "Menghapus...",
+		"empty": "Kosongkan sampah",
+		"emptyConfirm": "Hapus permanen SEMUA item di sampah? Tindakan ini tidak bisa dibatalkan.",
+		"emptying": "Mengosongkan sampah...",
+		"emptyState": "Sampah kosong.",
+		"hint": "Item yang dihapus dipindahkan ke sampah dan masih bisa dipulihkan."
 	}
 }

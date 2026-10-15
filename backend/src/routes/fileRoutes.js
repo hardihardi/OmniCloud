@@ -1,5 +1,6 @@
 import { Router } from 'express';
-import { listFilesByPath, getFileById, getFileByRemoteId, listRecentFiles, listStarredFiles, searchFiles, setFileStarred, updateFileStarredByRemoteId } from '../services/fileService.js';
+import { randomUUID } from 'node:crypto';
+import { listFilesByPath, getFileById, getFileByRemoteId, listRecentFiles, listStarredFiles, searchFiles, setFileStarred, updateFileStarredByRemoteId, listTrashFiles, softDeleteFile, restoreFile, purgeFileRecord, updateFilePath, getFileRowById, createFileMetadata } from '../services/fileService.js';
 import { getAccountById, getActiveAccounts } from '../services/accountService.js';
 import { createAdapter } from '../services/adapterRegistry.js';
 import { selectBestAccount } from '../services/spaceAllocator.js';
@@ -119,13 +120,13 @@ async function getFileContext(userId, fileId) {
 	};
 }
 
-function ensureFileContext(context, res) {
+function ensureFileContext(context, res, { allowDisconnected = false } = {}) {
 	if (!context.file) {
 		res.status(404).json({ error: 'File not found' });
 		return false;
 	}
 
-	if (!context.account || context.account.status !== 'active' || !context.adapter) {
+	if (!context.account || !context.adapter || (context.account.status !== 'active' && !allowDisconnected)) {
 		res.status(409).json({ error: 'The file account is no longer connected' });
 		return false;
 	}
@@ -133,12 +134,37 @@ function ensureFileContext(context, res) {
 	return true;
 }
 
+
+function normalizeTargetPath(input = '/') {
+	const cleaned = String(input || '/').startsWith('/') ? String(input) : `/${String(input)}`;
+	const trimmed = cleaned.replace(/\/+$/, '');
+	return trimmed === '' ? '/' : `${trimmed}/`;
+}
+
 async function deleteContextFile(userId, context, rawId = context?.file?.id, options = {}) {
-	const { sync = true } = options;
-	await context.adapter.deleteFile(context.file);
+	const { sync = true, permanent = false } = options;
+	// custom: remote sync is best-effort — DB record must transition even if the provider call fails
+	try {
+		if (permanent) {
+			await context.adapter.purgeFile(context.file);
+		} else {
+			await context.adapter.deleteFile(context.file);
+		}
+	} catch (remoteError) {
+		console.warn('deleteContextFile: remote delete failed (DB record still updated):', remoteError?.message || remoteError);
+	}
+	if (permanent) {
+		purgeFileRecord(userId, context.file.id);
+	} else {
+		softDeleteFile(userId, context.file.id);
+	}
 
 	if (sync && context.account) {
-		await syncAccount(userId, context.account);
+		try {
+			await syncAccount(userId, context.account);
+		} catch (syncError) {
+			console.warn('deleteContextFile: account sync failed:', syncError?.message || syncError);
+		}
 	}
 }
 
@@ -176,7 +202,9 @@ router.get('/files', async (req, res, next) => {
 				? listRecentFiles(req.user.id)
 				: req.query.shared === '1'
 					? await listSharedWithMeFiles(req.user.id)
-					: listFilesByPath(req.user.id, req.query.path || '/');
+					: req.query.trash === '1'
+						? listTrashFiles(req.user.id)
+						: listFilesByPath(req.user.id, req.query.path || '/');
 		res.json({ data: files });
 	} catch (error) {
 		next(error);
@@ -356,13 +384,213 @@ router.patch('/files/:id/rename', async (req, res, next) => {
 router.delete('/files/:id', async (req, res, next) => {
 	try {
 		const context = await getFileContext(req.user.id, req.params.id);
-		if (!ensureFileContext(context, res)) {
+		if (!ensureFileContext(context, res, { allowDisconnected: true })) {
 			return;
 		}
 
-		await deleteContextFile(req.user.id, context, req.params.id);
+		const permanent = req.query.permanent === '1';
+		// Soft delete: trash on the provider (when supported, best-effort) + mark locally.
+		await deleteContextFile(req.user.id, context, context.file.id, { sync: true, permanent });
+
+		return res.json({ data: { success: true, permanent } });
+	} catch (error) {
+		next(error);
+	}
+});
+
+router.post('/files/:id/restore', async (req, res, next) => {
+	try {
+		const context = await getFileContext(req.user.id, req.params.id);
+		if (!ensureFileContext(context, res, { allowDisconnected: true })) {
+			return;
+		}
+
+		const supportsTrash = Boolean(context.adapter?.getCapabilities?.().trash);
+		if (supportsTrash) {
+			try {
+				await context.adapter.restoreFile(context.file);
+			} catch (remoteError) {
+				console.warn('restore: remote restore failed (DB record still restored):', remoteError?.message || remoteError);
+			}
+		}
+		restoreFile(req.user.id, context.file.id);
+		if (context.account) {
+			try {
+				await syncAccount(req.user.id, context.account);
+			} catch (syncError) {
+				console.warn('restore: account sync failed:', syncError?.message || syncError);
+			}
+		}
 
 		return res.json({ data: { success: true } });
+	} catch (error) {
+		next(error);
+	}
+});
+
+router.post('/files/bulk/restore', async (req, res, next) => {
+	try {
+		const ids = Array.isArray(req.body?.ids) ? [...new Set(req.body.ids.filter(Boolean))] : [];
+		if (!ids.length) {
+			return res.status(400).json({ error: 'At least one file id is required' });
+		}
+
+		let restored = 0;
+		const touchedAccountIds = new Set();
+		for (const id of ids) {
+			const context = await getFileContext(req.user.id, id);
+			if (!context.file || !context.account || context.account.status !== 'active' || !context.adapter) continue;
+			const supportsTrash = Boolean(context.adapter.getCapabilities?.().trash);
+			try {
+				if (supportsTrash) {
+					await context.adapter.restoreFile(context.file);
+				}
+				restoreFile(req.user.id, context.file.id);
+				restored += 1;
+				touchedAccountIds.add(context.account.id);
+			} catch (error) {
+				// Keep restoring the rest.
+			}
+		}
+
+		for (const accountId of touchedAccountIds) {
+			const account = getAccountById(req.user.id, accountId);
+			if (account) {
+				await syncAccount(req.user.id, account);
+			}
+		}
+
+		return res.json({ data: { success: true, count: restored } });
+	} catch (error) {
+		next(error);
+	}
+});
+
+router.patch('/files/:id/move', async (req, res, next) => {
+	try {
+		const { targetPath, targetFolderId } = req.body || {};
+		if (!targetPath && !targetFolderId) {
+			return res.status(400).json({ error: 'targetPath or targetFolderId is required' });
+		}
+
+		const context = await getFileContext(req.user.id, req.params.id);
+		if (!ensureFileContext(context, res)) {
+			return;
+		}
+		if (context.file.is_folder) {
+			return res.status(400).json({ error: 'Moving folders is not supported yet' });
+		}
+
+		const supportsMove = Boolean(context.adapter.getCapabilities?.().move);
+		if (!supportsMove) {
+			return res.status(400).json({ error: 'Move is not supported for this provider' });
+		}
+
+		// Resolve destination remote parent id.
+		let targetFolder = null;
+		if (targetFolderId) {
+			targetFolder = getFileRowById(req.user.id, targetFolderId);
+			if (!targetFolder || !targetFolder.is_folder) {
+				return res.status(400).json({ error: 'Target folder not found' });
+			}
+		} else {
+			const normalizedTarget = String(targetPath || '/').startsWith('/') ? String(targetPath) : `/${targetPath}`;
+			targetFolder = listFilesByPath(req.user.id, normalizedTarget).find((item) => item.is_folder);
+		}
+
+		// custom: virtual_path stores the PARENT folder path (trailing slash), matching listFilesByPath convention
+		const nextPath = targetFolder?.virtual_path
+			|| normalizeTargetPath(String(targetPath || '/'));
+
+		const remoteParentId = targetFolder?.remote_file_id || context.adapter.account?.rootId || undefined;
+		if (remoteParentId) {
+			try {
+				await context.adapter.moveFile(context.file, remoteParentId);
+			} catch (remoteError) {
+				console.warn('move: remote move failed (DB record still moved):', remoteError?.message || remoteError);
+			}
+		}
+		updateFilePath(req.user.id, context.file.id, nextPath);
+		try {
+			await syncAccount(req.user.id, context.account);
+		} catch (syncError) {
+			console.warn('move: account sync failed:', syncError?.message || syncError);
+		}
+
+		return res.json({ data: { success: true } });
+	} catch (error) {
+		next(error);
+	}
+});
+
+router.post('/files/:id/copy', async (req, res, next) => {
+	try {
+		const { name, targetPath, targetFolderId } = req.body || {};
+		const context = await getFileContext(req.user.id, req.params.id);
+		if (!ensureFileContext(context, res)) {
+			return;
+		}
+		if (context.file.is_folder) {
+			return res.status(400).json({ error: 'Copying folders is not supported yet' });
+		}
+
+		const supportsCopy = Boolean(context.adapter.getCapabilities?.().copy);
+		if (!supportsCopy) {
+			return res.status(400).json({ error: 'Copy is not supported for this provider' });
+		}
+
+		// Destination: same folder by default, or a target folder.
+		let destFolder = null;
+		if (targetFolderId) {
+			destFolder = getFileRowById(req.user.id, targetFolderId);
+			if (!destFolder || !destFolder.is_folder) {
+				return res.status(400).json({ error: 'Target folder not found' });
+			}
+		} else if (targetPath) {
+			const normalizedTarget = String(targetPath).startsWith('/') ? String(targetPath) : `/${targetPath}`;
+			destFolder = listFilesByPath(req.user.id, normalizedTarget).find((item) => item.is_folder);
+		} else {
+			destFolder = listFilesByPath(req.user.id, context.file.virtual_path).find((item) => item.is_folder);
+		}
+
+		let copied;
+		try {
+			copied = await context.adapter.copyFile(context.file, {
+				name: name?.trim() || undefined,
+				remoteParentId: destFolder?.remote_file_id || undefined,
+			});
+		} catch (remoteError) {
+			// custom: fallback to a local-only copy record when the provider copy fails
+			console.warn('copy: remote copy failed, creating local record only:', remoteError?.message || remoteError);
+			copied = {
+				file_name: name?.trim() ? `${name.trim()}` : `${context.file.file_name.replace(/(\.[^.]*)?$/, (m) => ` (copy)${m || ''}`)}`,
+				size: context.file.size,
+				mime_type: context.file.mime_type,
+				remote_file_id: `local-copy-${randomUUID()}`,
+				remote_parent_id: destFolder?.remote_file_id || null,
+				remote_created_time: null,
+				remote_modified_time: null,
+			};
+		}
+
+		// custom: virtual_path = parent folder path (trailing slash), matching listFilesByPath convention
+		const nextPath = destFolder?.virtual_path || context.file.virtual_path;
+
+		createFileMetadata({
+			user_id: req.user.id,
+			virtual_path: nextPath,
+			file_name: copied.file_name,
+			is_folder: 0,
+			size: copied.size,
+			mime_type: copied.mime_type,
+			cloud_account_id: context.account.id,
+			remote_file_id: copied.remote_file_id,
+			remote_parent_id: copied.remote_parent_id,
+			remote_created_time: copied.remote_created_time,
+			remote_modified_time: copied.remote_modified_time,
+		});
+
+		return res.json({ data: { success: true, file: getFileRowById(req.user.id, context.file.id) ? { id: undefined, file_name: copied.file_name } : null } });
 	} catch (error) {
 		next(error);
 	}

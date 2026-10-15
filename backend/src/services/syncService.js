@@ -28,7 +28,7 @@ async function fetchAccountSnapshot(account) {
 
 function handleSyncFailure(account, error) {
 	if (isAuthError(error)) {
-		clearFilesForAccount(account.user_id, account.id);
+		// custom: keep local metadata (incl. trash) on auth failure — reconnect + resync will reconcile
 		markAccountStatus(account.user_id, account.id, 'invalid_token');
 		console.error(`Auth error for account ${account.email}, marked invalid_token:`, error.message);
 		return;

@@ -11,6 +11,9 @@ export class BaseCloudAdapter {
 			starred: false,
 			rename: true,
 			delete: true,
+			trash: false,
+			move: false,
+			copy: false,
 		};
 	}
 
@@ -75,6 +78,27 @@ export class BaseCloudAdapter {
 
 	async deleteFile() {
 		throw new Error(`Delete is not supported for provider ${this.account.provider}`);
+	}
+
+	async restoreFile() {
+		throw new Error(`Restore is not supported for provider ${this.account.provider}`);
+	}
+
+	async purgeFile(fileRecord) {
+		// Providers without trash semantics: purge == delete.
+		await this.deleteFile(fileRecord);
+	}
+
+	async listTrash() {
+		return [];
+	}
+
+	async moveFile() {
+		throw new Error(`Move is not supported for provider ${this.account.provider}`);
+	}
+
+	async copyFile() {
+		throw new Error(`Copy is not supported for provider ${this.account.provider}`);
 	}
 
 	async getFileDetails(fileRecord) {

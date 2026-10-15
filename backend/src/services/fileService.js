@@ -30,6 +30,7 @@ export function listFilesByPath(userId, virtualPath = '/') {
       FROM file_metadata fm
       INNER JOIN cloud_accounts ca ON ca.id = fm.cloud_account_id
 			WHERE fm.user_id = ?
+				AND fm.deleted_at IS NULL
 				AND fm.virtual_path = ?
 				AND ca.status = 'active'
       ORDER BY fm.is_folder DESC, fm.file_name COLLATE NOCASE ASC
@@ -52,6 +53,7 @@ export function searchFiles(userId, term = '', limit = 50) {
       INNER JOIN cloud_accounts ca ON ca.id = fm.cloud_account_id
 			WHERE fm.user_id = ?
 				AND ca.status = 'active'
+				AND fm.deleted_at IS NULL
 				AND fm.file_name LIKE ? COLLATE NOCASE
       ORDER BY
 				CASE WHEN fm.file_name LIKE ? COLLATE NOCASE THEN 0 ELSE 1 END,
@@ -99,8 +101,8 @@ export function getFileById(userId, id) {
 		.prepare(`
       SELECT fm.*, ca.provider, ca.email
       FROM file_metadata fm
-      INNER JOIN cloud_accounts ca ON ca.id = fm.cloud_account_id
-			WHERE fm.user_id = ? AND fm.id = ? AND ca.status = 'active'
+      LEFT JOIN cloud_accounts ca ON ca.id = fm.cloud_account_id
+			WHERE fm.user_id = ? AND fm.id = ?
     `)
 		.get(userId, id);
 
@@ -113,8 +115,8 @@ export function getFileByRemoteId(userId, cloudAccountId, remoteFileId) {
 		.prepare(`
       SELECT fm.*, ca.provider, ca.email
       FROM file_metadata fm
-      INNER JOIN cloud_accounts ca ON ca.id = fm.cloud_account_id
-			WHERE fm.user_id = ? AND fm.cloud_account_id = ? AND fm.remote_file_id = ? AND ca.status = 'active'
+      LEFT JOIN cloud_accounts ca ON ca.id = fm.cloud_account_id
+			WHERE fm.user_id = ? AND fm.cloud_account_id = ? AND fm.remote_file_id = ?
     `)
 		.get(userId, cloudAccountId, remoteFileId);
 
@@ -132,7 +134,7 @@ export function listStarredFiles(userId) {
 			SELECT fm.*, ca.provider, ca.email
 			FROM file_metadata fm
 			INNER JOIN cloud_accounts ca ON ca.id = fm.cloud_account_id
-			WHERE fm.user_id = ? AND COALESCE(fm.is_starred, 0) = 1 AND ca.status = 'active'
+			WHERE fm.user_id = ? AND COALESCE(fm.is_starred, 0) = 1 AND fm.deleted_at IS NULL AND ca.status = 'active'
 			ORDER BY COALESCE(fm.remote_modified_time, fm.remote_created_time) DESC,
 				fm.updated_at DESC,
 				fm.file_name COLLATE NOCASE ASC
@@ -150,6 +152,7 @@ export function listRecentFiles(userId) {
 			INNER JOIN cloud_accounts ca ON ca.id = fm.cloud_account_id
 			WHERE fm.user_id = ?
 				AND fm.is_folder = 0
+				AND fm.deleted_at IS NULL
 				AND ca.status = 'active'
 			ORDER BY COALESCE(fm.remote_modified_time, fm.remote_created_time) DESC,
 				fm.updated_at DESC,
@@ -176,6 +179,66 @@ export function setFileStarred(userId, fileId, isStarred) {
 	`).run(isStarred ? 1 : 0, userId, fileId);
 }
 
+export function softDeleteFile(userId, fileId) {
+	const file = db.prepare('SELECT id, virtual_path FROM file_metadata WHERE user_id = ? AND id = ? AND deleted_at IS NULL').get(userId, fileId);
+	if (!file) return null;
+	db.prepare(`
+		UPDATE file_metadata
+		SET deleted_at = CURRENT_TIMESTAMP, original_path = ?, updated_at = CURRENT_TIMESTAMP
+		WHERE user_id = ? AND id = ?
+	`).run(file.virtual_path, userId, fileId);
+	return file;
+}
+
+export function restoreFile(userId, fileId) {
+	const file = db.prepare('SELECT id, original_path FROM file_metadata WHERE user_id = ? AND id = ? AND deleted_at IS NOT NULL').get(userId, fileId);
+	if (!file) return null;
+	const targetPath = file.original_path || '/';
+	db.prepare(`
+		UPDATE file_metadata
+		SET deleted_at = NULL, virtual_path = ?, original_path = NULL, updated_at = CURRENT_TIMESTAMP
+		WHERE user_id = ? AND id = ?
+	`).run(targetPath, userId, fileId);
+	return { id: fileId, virtual_path: targetPath };
+}
+
+export function purgeFileRecord(userId, fileId) {
+	return db.prepare('DELETE FROM file_metadata WHERE user_id = ? AND id = ?').run(userId, fileId);
+}
+
+export function listTrashFiles(userId) {
+	const rows = db
+		.prepare(`
+			SELECT fm.*, ca.provider, ca.email
+			FROM file_metadata fm
+			LEFT JOIN cloud_accounts ca ON ca.id = fm.cloud_account_id
+			WHERE fm.user_id = ? AND fm.deleted_at IS NOT NULL
+			ORDER BY fm.deleted_at DESC, fm.file_name COLLATE NOCASE ASC
+		`)
+		.all(userId);
+	return buildDisplayNames(rows);
+}
+
+export function updateFilePath(userId, fileId, nextPath) {
+	return db.prepare(`
+		UPDATE file_metadata
+		SET virtual_path = ?, updated_at = CURRENT_TIMESTAMP
+		WHERE user_id = ? AND id = ?
+	`).run(normalizePath(nextPath), userId, fileId);
+}
+
+export function updateFileName(userId, fileId, nextName) {
+	return db.prepare(`
+		UPDATE file_metadata
+		SET file_name = ?, updated_at = CURRENT_TIMESTAMP
+		WHERE user_id = ? AND id = ?
+	`).run(nextName, userId, fileId);
+}
+
+export function getFileRowById(userId, fileId) {
+	return db.prepare('SELECT * FROM file_metadata WHERE user_id = ? AND id = ?').get(userId, fileId);
+}
+
 export function replaceFilesForAccount(userId, cloudAccountId, records) {
 	const normalizedRecords = records.map((record) => ({
 		id: record.id || randomUUID(),
@@ -194,7 +257,8 @@ export function replaceFilesForAccount(userId, cloudAccountId, records) {
 	}));
 
 	const replace = db.transaction(() => {
-		db.prepare('DELETE FROM file_metadata WHERE user_id = ? AND cloud_account_id = ?').run(userId, cloudAccountId);
+		// custom: preserve trashed records (deleted_at IS NOT NULL) so sync never wipes the trash
+		db.prepare('DELETE FROM file_metadata WHERE user_id = ? AND cloud_account_id = ? AND deleted_at IS NULL').run(userId, cloudAccountId);
 
 		if (!normalizedRecords.length) {
 			return;
@@ -217,7 +281,8 @@ export function replaceFilesForAccount(userId, cloudAccountId, records) {
 }
 
 export function clearFilesForAccount(userId, cloudAccountId) {
-	db.prepare('DELETE FROM file_metadata WHERE user_id = ? AND cloud_account_id = ?').run(userId, cloudAccountId);
+	// custom: keep trashed records so an auth failure never empties the trash
+	db.prepare('DELETE FROM file_metadata WHERE user_id = ? AND cloud_account_id = ? AND deleted_at IS NULL').run(userId, cloudAccountId);
 }
 
 export function upsertFileMetadata(record) {

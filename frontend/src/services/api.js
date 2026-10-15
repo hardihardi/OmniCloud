@@ -75,6 +75,37 @@ export const api = {
 	listSharedWithMeFiles() {
 		return request('/files?shared=1');
 	},
+	listTrashFiles() {
+		return request('/files?trash=1');
+	},
+	restoreFile(fileId) {
+		return request(`/files/${fileId}/restore`, {
+			method: 'POST',
+		});
+	},
+	restoreFiles(fileIds) {
+		return request('/files/bulk/restore', {
+			method: 'POST',
+			body: JSON.stringify({ ids: fileIds }),
+		});
+	},
+	purgeFile(fileId) {
+		return request(`/files/${fileId}?permanent=1`, {
+			method: 'DELETE',
+		});
+	},
+	moveFile(fileId, payload) {
+		return request(`/files/${fileId}/move`, {
+			method: 'PATCH',
+			body: JSON.stringify(payload),
+		});
+	},
+	copyFile(fileId, payload) {
+		return request(`/files/${fileId}/copy`, {
+			method: 'POST',
+			body: JSON.stringify(payload),
+		});
+	},
 	listSharedFolderChildren(fileId) {
 		return request(`/files/${fileId}/shared-children`);
 	},
