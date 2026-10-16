@@ -10,6 +10,7 @@ import LoginView from '../views/auth/LoginView.vue';
 import RegisterView from '../views/auth/RegisterView.vue';
 import GoogleCallbackView from '../views/auth/GoogleCallbackView.vue';
 import AdminView from '../views/AdminView.vue';
+import SharePageView from '../views/SharePageView.vue';
 import { useAuthStore } from '../stores/auth';
 
 const router = createRouter({
@@ -32,6 +33,12 @@ const router = createRouter({
 			name: 'google-callback',
 			component: GoogleCallbackView,
 			meta: { public: true },
+		},
+		{
+			path: '/s/:token',
+			name: 'share-page',
+			component: SharePageView,
+			meta: { sharePublic: true },
 		},
 		{
 			path: '/admin',
@@ -78,6 +85,10 @@ const router = createRouter({
 });
 
 router.beforeEach(async (to) => {
+	// custom4: public share page — no auth, no bootstrap redirect
+	if (to.meta.sharePublic) {
+		return true;
+	}
 	const authStore = useAuthStore();
 	await authStore.bootstrap();
 

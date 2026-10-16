@@ -14,6 +14,21 @@ import FileListGridCard from '../components/FileListGridCard.vue';
 import FileListContextMenu from '../components/FileListContextMenu.vue';
 import FilePreviewModal from '../components/FilePreviewModal.vue';
 import FileDetailsModal from '../components/FileDetailsModal.vue';
+import ShareModal from '../components/ShareModal.vue';
+
+// custom4: share via link
+const isShareOpen = ref(false);
+const shareFile = ref(null);
+const shareModalRef = ref(null);
+function openShare(file) {
+	shareFile.value = file;
+	isShareOpen.value = true;
+	nextTick(() => shareModalRef.value?.loadStatus?.());
+}
+function closeShare() {
+	isShareOpen.value = false;
+	shareFile.value = null;
+}
 import FolderPickerModal from '../components/FolderPickerModal.vue';
 import LoadingState from '../components/LoadingState.vue';
 import { useIncrementalRender } from '../composables/useIncrementalRender';
@@ -493,14 +508,15 @@ onBeforeUnmount(() => {
 				<LoadingState v-if="actionInProgress" variant="overlay" :message="actionLabel || t('drive.processing')" />
 			</div>
 
-			<FileListContextMenu :context-menu-ref="contextMenuRef" :context-menu="contextMenu" :selected-count="selectedCount" :primary-selected-file="primarySelectedFile" :can-preview="canPreviewSelection" :can-toggle-star="canToggleStarSelection" :is-primary-starred="isPrimarySelectedStarred" :can-download="canDownloadSelection" :can-rename="canRenameSelection" :can-move="true" :can-copy="true" :can-show-details="selectedCount === 1" :can-open-folder="canOpenSelection" @open-folder="openSelectedItem" @preview="openPreview" @toggle-star="toggleSelectedFileStar" @download="downloadSelection" @rename="renameSelectedFile" @show-details="showSelectedFileDetails" @delete="deleteSelectedFile" @move="requestMove" @copy="requestCopy" @close="closeContextMenu" />
+			<FileListContextMenu :context-menu-ref="contextMenuRef" :context-menu="contextMenu" :selected-count="selectedCount" :primary-selected-file="primarySelectedFile" :can-preview="canPreviewSelection" :can-toggle-star="canToggleStarSelection" :is-primary-starred="isPrimarySelectedStarred" :can-download="canDownloadSelection" :can-rename="canRenameSelection" :can-move="true" :can-copy="true" :can-show-details="selectedCount === 1" :can-open-folder="canOpenSelection" @open-folder="openSelectedItem" @preview="openPreview" @toggle-star="toggleSelectedFileStar" @download="downloadSelection" @rename="renameSelectedFile" @show-details="showSelectedFileDetails" @delete="deleteSelectedFile" @move="requestMove" @copy="requestCopy" @share="openShare" @close="closeContextMenu" />
 
 			<FolderPickerModal :is-open="isFolderPickerOpen" :mode="folderPickerMode" :file="primarySelectedFile" @close="isFolderPickerOpen = false" @confirm="handleMoveCopyConfirm" />
 
 			<p v-if="moveCopySuccess && !isFolderPickerOpen" class="mb-3 rounded-2xl bg-[#e6f4ea] px-4 py-3 text-sm text-[#137333] dark:bg-emerald-950/40 dark:text-emerald-300" role="status">{{ moveCopySuccess }}</p>
 			<p v-if="moveCopyError" class="mb-3 rounded-2xl bg-[#fce8e6] px-4 py-3 text-sm text-[#c5221f] dark:bg-red-950/40 dark:text-red-300" role="alert">{{ moveCopyError }}</p>
 
-			<FileDetailsModal :file="detailsFile" :is-open="isDetailsOpen" :is-folder="detailsFile?.is_folder" :provider-label-fn="providerLabel" @close="closeDetails" />
+			<ShareModal ref="shareModalRef" :file="shareFile" :is-open="isShareOpen" @close="closeShare" />
+			<FileDetailsModal :file="detailsFile" :is-open="isDetailsOpen" :is-folder="detailsFile?.is_folder" :provider-label-fn="providerLabel" @close="closeDetails" @share="openShare" />
 			<FilePreviewModal :file="previewFile" :is-open="isPreviewOpen" :is-loading="isPreviewLoading" @close="closePreview" @loaded="handlePreviewLoaded" @failed="handlePreviewFailed" />
 		</div>
 

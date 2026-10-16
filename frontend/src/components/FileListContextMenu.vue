@@ -1,7 +1,7 @@
 <script setup>
 import { computed } from 'vue';
 import { useI18n } from 'vue-i18n';
-import { IconFolder, IconStar, IconStarFilled, IconEye, IconDownload, IconEdit, IconInfoCircle, IconTrash, IconArrowsMove, IconCopy } from '@tabler/icons-vue';
+import { IconFolder, IconStar, IconStarFilled, IconEye, IconDownload, IconEdit, IconInfoCircle, IconTrash, IconArrowsMove, IconCopy, IconLink } from '@tabler/icons-vue';
 
 const { t } = useI18n();
 
@@ -20,9 +20,10 @@ const props = defineProps({
 	canShowDetails: { type: Boolean, default: true },
 	canOpenFolder: { type: Boolean, default: false },
 	canDelete: { type: Boolean, default: true },
+	canShare: { type: Boolean, default: true },
 });
 
-const emit = defineEmits(['open-folder', 'preview', 'toggle-star', 'download', 'rename', 'show-details', 'delete', 'move', 'copy', 'close']);
+const emit = defineEmits(['open-folder', 'preview', 'toggle-star', 'download', 'rename', 'show-details', 'delete', 'move', 'copy', 'share', 'close']);
 
 const showOpen = computed(() => props.canOpenFolder && props.selectedCount === 1 && Boolean(props.primarySelectedFile?.is_folder));
 const showPreview = computed(() => props.selectedCount === 1 && !props.primarySelectedFile?.is_folder);
@@ -55,6 +56,9 @@ function handleMove() {
 function handleCopy() {
 	emit('copy');
 }
+function handleShare() {
+	emit('share', props.primarySelectedFile);
+}
 </script>
 
 <template>
@@ -86,6 +90,10 @@ function handleCopy() {
 		<button v-if="canCopy && selectedCount === 1" type="button" class="flex w-full items-center gap-3 px-4 py-3 text-left text-sm text-[#202124] hover:bg-[#f8fafd] dark:text-slate-100 dark:hover:bg-slate-700/70" :aria-label="t('drive.copy')" @click="handleCopy">
 			<IconCopy :size="17" :stroke="2" />
 			<span>{{ t('drive.copy') }}</span>
+		</button>
+		<button v-if="canShare && selectedCount === 1 && !primarySelectedFile?.is_folder" type="button" class="flex w-full items-center gap-3 px-4 py-3 text-left text-sm text-[#202124] hover:bg-[#f8fafd] dark:text-slate-100 dark:hover:bg-slate-700/70" :aria-label="t('share.title')" @click="handleShare">
+			<IconLink :size="17" :stroke="2" />
+			<span>{{ t('share.title') }}</span>
 		</button>
 		<button type="button" class="flex w-full items-center gap-3 px-4 py-3 text-left text-sm text-[#202124] hover:bg-[#f8fafd] disabled:cursor-not-allowed disabled:opacity-50 dark:text-slate-100 dark:hover:bg-slate-700/70" :disabled="!canShowDetails" @click="handleDetails">
 			<IconInfoCircle :size="17" :stroke="2" />

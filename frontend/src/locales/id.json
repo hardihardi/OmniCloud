@@ -443,5 +443,29 @@
 		"emptying": "Mengosongkan sampah...",
 		"emptyState": "Sampah kosong.",
 		"hint": "Item yang dihapus dipindahkan ke sampah dan masih bisa dipulihkan."
+	},
+	"share": {
+		"title": "Bagikan via tautan",
+		"notSharedDesc": "Siapa pun yang memiliki tautan dapat melihat dan mengunduh file ini.",
+		"expiryLabel": "Kedaluwarsa tautan",
+		"expiryNever": "Tidak pernah kedaluwarsa",
+		"expiry1d": "1 hari",
+		"expiry7d": "7 hari",
+		"expiry30d": "30 hari",
+		"createButton": "Buat tautan bagikan",
+		"linkLabel": "Tautan publik",
+		"copy": "Salin tautan",
+		"expiresAt": "Kedaluwarsa:",
+		"revokeButton": "Hentikan berbagi",
+		"loadFailed": "Gagal memuat status berbagi.",
+		"createFailed": "Gagal membuat tautan bagikan.",
+		"revokeFailed": "Gagal menghentikan berbagi.",
+		"copyFailed": "Gagal menyalin tautan."
+	},
+	"sharePage": {
+		"download": "Unduh",
+		"notFound": "Tautan tidak ditemukan atau sudah tidak berlaku.",
+		"notFoundTitle": "Tautan tidak tersedia",
+		"noPreview": "Preview tidak tersedia untuk jenis file ini. Unduh untuk melihat isinya."
 	}
 }

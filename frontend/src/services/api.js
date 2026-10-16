@@ -251,6 +251,19 @@ export const api = {
 	downloadUrl(fileId) {
 		return `${API_BASE_URL}/files/${fileId}/download`;
 	},
+	// custom4: share links
+	getShareStatus(fileId) {
+		return request(`/files/${fileId}/share`);
+	},
+	createShareLink(fileId, body = {}) {
+		return request(`/files/${fileId}/share`, {
+			method: 'POST',
+			body: JSON.stringify(body),
+		});
+	},
+	revokeShareLink(fileId) {
+		return request(`/files/${fileId}/share`, { method: 'DELETE' });
+	},
 	previewUrl(fileId) {
 		return `${API_BASE_URL}/files/${fileId}/preview`;
 	},

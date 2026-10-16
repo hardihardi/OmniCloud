@@ -118,3 +118,21 @@ ensureColumn('file_metadata', 'original_path', "original_path TEXT");
 db.exec(`
   CREATE INDEX IF NOT EXISTS idx_file_deleted_at ON file_metadata(user_id, deleted_at);
 `);
+
+// custom4: public share links
+db.prepare(`
+  CREATE TABLE IF NOT EXISTS share_links (
+    id TEXT PRIMARY KEY,
+    user_id TEXT NOT NULL,
+    file_id TEXT NOT NULL,
+    token TEXT NOT NULL UNIQUE,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    expires_at TEXT,
+    revoked_at TEXT,
+    FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE
+  );
+`).run();
+db.exec(`
+  CREATE INDEX IF NOT EXISTS idx_share_links_token ON share_links(token);
+  CREATE INDEX IF NOT EXISTS idx_share_links_file ON share_links(user_id, file_id);
+`);

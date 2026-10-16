@@ -1,7 +1,7 @@
 <script setup>
 import { computed } from 'vue';
 import { useI18n } from 'vue-i18n';
-import { IconX } from '@tabler/icons-vue';
+import { IconX, IconLink } from '@tabler/icons-vue';
 import {
 	formatBytes,
 	formatDate,
@@ -19,7 +19,7 @@ const props = defineProps({
 	isFolder: { type: Boolean, default: false },
 });
 
-const emit = defineEmits(['close']);
+const emit = defineEmits(['close', 'share']);
 
 const { t } = useI18n();
 
@@ -80,6 +80,11 @@ function onBackdropClick() {
 				<dt class="text-[#5f6368] dark:text-slate-400">{{ t('drive.remoteId') || 'Remote ID' }}</dt>
 				<dd class="break-all">{{ remoteId }}</dd>
 			</dl>
+
+			<button v-if="!props.isFolder && props.file?.id && !String(props.file?.id).startsWith('shared:')" type="button" class="mt-6 flex h-11 w-full items-center justify-center gap-2 rounded-full bg-[#1a73e8] text-sm font-medium text-white transition hover:bg-[#1765cc]" @click="emit('share', props.file)">
+				<IconLink :size="16" :stroke="2" />
+				{{ t('share.title') }}
+			</button>
 		</div>
 	</div>
 </template>

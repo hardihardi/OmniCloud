@@ -443,5 +443,29 @@
 		"emptying": "Emptying trash...",
 		"emptyState": "Trash is empty.",
 		"hint": "Deleted items are moved to trash and can still be restored."
+	},
+	"share": {
+		"title": "Share via link",
+		"notSharedDesc": "Anyone with the link can view and download this file.",
+		"expiryLabel": "Link expiry",
+		"expiryNever": "Never expires",
+		"expiry1d": "1 day",
+		"expiry7d": "7 days",
+		"expiry30d": "30 days",
+		"createButton": "Create share link",
+		"linkLabel": "Public link",
+		"copy": "Copy link",
+		"expiresAt": "Expires:",
+		"revokeButton": "Stop sharing",
+		"loadFailed": "Failed to load share status.",
+		"createFailed": "Failed to create share link.",
+		"revokeFailed": "Failed to stop sharing.",
+		"copyFailed": "Failed to copy link."
+	},
+	"sharePage": {
+		"download": "Download",
+		"notFound": "This link was not found or is no longer available.",
+		"notFoundTitle": "Link unavailable",
+		"noPreview": "Preview is not available for this file type. Download it to view the contents."
 	}
 }
