@@ -162,7 +162,27 @@ async function emptyTrash() {
 	view.actionInProgress.value = true;
 	view.actionLabel.value = t('trash.emptying');
 	try {
-		await Promise.allSettled(sortedFiles.value.map((item) => api.purgeFile(item.id)));
+		// custom: satu panggilan bulk purge — server memproses seluruh trash
+		await api.emptyTrash();
+		await refresh();
+		clearSelection();
+	} catch (error) {
+		view.errorMessage.value = error.message || t('trash.deleteFailed');
+	} finally {
+		view.actionInProgress.value = false;
+		view.actionLabel.value = '';
+	}
+}
+
+// custom: purge beberapa file terpilih sekaligus
+async function purgeSelected() {
+	const ids = [...(view.selectedFileIds?.value ?? [])];
+	if (!ids.length) return;
+	if (!window.confirm(t('trash.deleteForeverConfirm'))) return;
+	view.actionInProgress.value = true;
+	view.actionLabel.value = t('trash.deleting');
+	try {
+		await api.purgeFiles(ids);
 		await refresh();
 		clearSelection();
 	} catch (error) {
@@ -191,7 +211,7 @@ async function emptyTrash() {
 			<p class="mb-3 text-sm text-[#5f6368] dark:text-slate-400">{{ t('trash.hint') }}</p>
 
 			<div class="mb-3 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-				<FileListSelectionBar v-if="selectedCount" :selected-count="selectedCount" :can-preview="false" :can-toggle-star="false" :is-primary-starred="false" :can-download="false" :can-rename="false" :primary-file="primarySelectedFile" @clear="clearSelection" @show-details="showSelectedFileDetails">
+				<FileListSelectionBar v-if="selectedCount" :selected-count="selectedCount" :can-preview="false" :can-toggle-star="false" :is-primary-starred="false" :can-download="false" :can-rename="false" :can-restore="true" :can-delete="true" :primary-file="primarySelectedFile" @clear="clearSelection" @show-details="showSelectedFileDetails" @restore="restoreSelected" @delete="purgeSelected">
 					<template #prefix>
 						<button type="button" class="inline-flex size-9 items-center justify-center rounded-full transition enabled:hover:bg-[#d2e3fc] dark:enabled:hover:bg-sky-500/20" :title="t('trash.restore')" :aria-label="t('trash.restore')" @click.stop="restoreSelected">
 							<IconRestore :size="18" :stroke="2" />

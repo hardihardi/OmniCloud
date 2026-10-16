@@ -1,5 +1,5 @@
 <script setup>
-import { computed } from 'vue';
+import { computed, ref } from 'vue';
 import { storeToRefs } from 'pinia';
 import { useRouter } from 'vue-router';
 import { useI18n } from 'vue-i18n';
@@ -13,6 +13,7 @@ import FileListHeader from '../components/FileListHeader.vue';
 import FileListRow from '../components/FileListRow.vue';
 import FileListGridCard from '../components/FileListGridCard.vue';
 import FileListContextMenu from '../components/FileListContextMenu.vue';
+import FolderPickerModal from '../components/FolderPickerModal.vue';
 import FilePreviewModal from '../components/FilePreviewModal.vue';
 import FileDetailsModal from '../components/FileDetailsModal.vue';
 import LoadingState from '../components/LoadingState.vue';
@@ -62,6 +63,7 @@ const {
 	sortedFiles,
 	selectedCount,
 	primarySelectedFile,
+	selectedFileIds,
 	isSelected,
 	openContextMenu,
 	clearSelection,
@@ -101,6 +103,57 @@ const { visibleItems: renderedFiles, handleScroll: handleListScroll } = useIncre
 	threshold: 240,
 });
 
+// custom: bulk move/copy dari Starred (file saja)
+const isFolderPickerOpen = ref(false);
+const folderPickerMode = ref('move');
+const moveCopyError = ref('');
+const moveCopySuccess = ref('');
+const isMoveCopyBusy = ref(false);
+
+function requestMove() {
+	if (!primarySelectedFile.value || primarySelectedFile.value.is_folder) return;
+	folderPickerMode.value = 'move';
+	moveCopyError.value = '';
+	moveCopySuccess.value = '';
+	isFolderPickerOpen.value = true;
+	closeContextMenu();
+}
+
+function requestCopy() {
+	if (!primarySelectedFile.value || primarySelectedFile.value.is_folder) return;
+	folderPickerMode.value = 'copy';
+	moveCopyError.value = '';
+	moveCopySuccess.value = '';
+	isFolderPickerOpen.value = true;
+	closeContextMenu();
+}
+
+async function handleMoveCopyConfirm({ targetPath }) {
+	const ids = [...selectedFileIds.value].filter((id) => {
+		const file = sortedFiles.value.find((item) => item.id === id);
+		return file && !file.is_folder;
+	});
+	if (!ids.length) return;
+	isMoveCopyBusy.value = true;
+	moveCopyError.value = '';
+	try {
+		if (folderPickerMode.value === 'move') {
+			await (ids.length === 1 ? api.moveFile(ids[0], { targetPath }) : api.moveFiles(ids, { targetPath }));
+			moveCopySuccess.value = t('drive.moveSuccess');
+			clearSelection();
+		} else {
+			await Promise.all(ids.map((id) => api.copyFile(id, { targetPath })));
+			moveCopySuccess.value = t('drive.copySuccess');
+		}
+		await refresh();
+		isFolderPickerOpen.value = false;
+	} catch (error) {
+		moveCopyError.value = error.message || 'Action failed';
+	} finally {
+		isMoveCopyBusy.value = false;
+	}
+}
+
 function openFolder(file) {
 	if (!file?.is_folder) return;
 	clearSelection();
@@ -137,7 +190,7 @@ useAutoRefresh(() => refresh(), { intervalMs: 30000 });
 			</div>
 
 			<div class="mb-3 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-				<FileListSelectionBar v-if="selectedCount" :selected-count="selectedCount" :can-preview="canPreviewSelection" :can-toggle-star="canToggleStarSelection" :is-primary-starred="isPrimarySelectedStarred" :can-download="canDownloadSelection" :can-rename="canRenameSelection" :primary-file="primarySelectedFile" @clear="clearSelection" @preview="openPreview" @toggle-star="toggleSelectedFileStar" @download="downloadSelection" @rename="renameSelectedFile" @show-details="showSelectedFileDetails" @delete="deleteSelectedFile">
+				<FileListSelectionBar v-if="selectedCount" :selected-count="selectedCount" :can-preview="canPreviewSelection" :can-toggle-star="canToggleStarSelection" :is-primary-starred="isPrimarySelectedStarred" :can-download="canDownloadSelection" :can-rename="canRenameSelection" :can-move="true" :can-copy="true" @move="requestMove" @copy="requestCopy" :primary-file="primarySelectedFile" @clear="clearSelection" @preview="openPreview" @toggle-star="toggleSelectedFileStar" @download="downloadSelection" @rename="renameSelectedFile" @show-details="showSelectedFileDetails" @delete="deleteSelectedFile">
 					<template #prefix="{ primary }">
 						<button v-if="primary?.is_folder && selectedCount === 1" type="button" class="inline-flex size-9 items-center justify-center rounded-full transition enabled:hover:bg-[#d2e3fc] dark:enabled:hover:bg-sky-500/20" :title="t('common.open')" @click="openSelectedItem">
 							<IconFolder :size="18" :stroke="2" />
@@ -173,7 +226,8 @@ useAutoRefresh(() => refresh(), { intervalMs: 30000 });
 				<LoadingState v-if="actionInProgress" variant="overlay" :message="actionLabel || t('drive.processing')" />
 			</div>
 
-			<FileListContextMenu :context-menu-ref="contextMenuRef" :context-menu="contextMenu" :selected-count="selectedCount" :primary-selected-file="primarySelectedFile" :can-preview="canPreviewSelection" :can-toggle-star="canToggleStarSelection" :is-primary-starred="isPrimarySelectedStarred" :can-download="canDownloadSelection" :can-rename="canRenameSelection" :can-show-details="selectedCount === 1" :can-open-folder="canOpenSelection" @open-folder="openSelectedItem" @preview="openPreview" @toggle-star="toggleSelectedFileStar" @download="downloadSelection" @rename="renameSelectedFile" @show-details="showSelectedFileDetails" @delete="deleteSelectedFile" @close="closeContextMenu" />
+			<FolderPickerModal :is-open="isFolderPickerOpen" :mode="folderPickerMode" :file="primarySelectedFile" @close="isFolderPickerOpen = false" @confirm="handleMoveCopyConfirm" />
+			<FileListContextMenu :context-menu-ref="contextMenuRef" :context-menu="contextMenu" :selected-count="selectedCount" :primary-selected-file="primarySelectedFile" :can-preview="canPreviewSelection" :can-toggle-star="canToggleStarSelection" :is-primary-starred="isPrimarySelectedStarred" :can-download="canDownloadSelection" :can-rename="canRenameSelection" :can-show-details="selectedCount === 1" :can-open-folder="canOpenSelection" :can-move="true" :can-copy="true" @move="requestMove" @copy="requestCopy" @open-folder="openSelectedItem" @preview="openPreview" @toggle-star="toggleSelectedFileStar" @download="downloadSelection" @rename="renameSelectedFile" @show-details="showSelectedFileDetails" @delete="deleteSelectedFile" @close="closeContextMenu" />
 
 			<FileDetailsModal :file="detailsFile" :is-open="isDetailsOpen" :is-folder="detailsFile?.is_folder" :provider-label-fn="providerLabel" @close="closeDetails" />
 			<FilePreviewModal :file="previewFile" :is-open="isPreviewOpen" :is-loading="isPreviewLoading" @close="closePreview" @loaded="handlePreviewLoaded" @failed="handlePreviewFailed" />

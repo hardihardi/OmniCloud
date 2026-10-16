@@ -65,18 +65,30 @@ function requestCopy() {
 	closeContextMenu();
 }
 
+// custom: bulk move/copy — operates on every selected file at once
 async function handleMoveCopyConfirm({ targetPath }) {
-	const file = primarySelectedFile.value;
-	if (!file) return;
+	const ids = [...selectedFileIds.value].filter((id) => {
+		const file = sortedFiles.value.find((item) => item.id === id);
+		return file && !file.is_folder;
+	});
+	if (!ids.length) return;
 	isMoveCopyBusy.value = true;
 	moveCopyError.value = '';
 	try {
 		if (folderPickerMode.value === 'move') {
-			await api.moveFile(file.id, { targetPath });
+			if (ids.length === 1) {
+				await api.moveFile(ids[0], { targetPath });
+			} else {
+				await api.moveFiles(ids, { targetPath });
+			}
 			moveCopySuccess.value = t('drive.moveSuccess');
 			clearSelection();
+		} else if (ids.length === 1) {
+			await api.copyFile(ids[0], { targetPath });
+			moveCopySuccess.value = t('drive.copySuccess');
 		} else {
-			await api.copyFile(file.id, { targetPath });
+			// copy satu per satu — setiap file butuh record copy sendiri
+			await Promise.all(ids.map((id) => api.copyFile(id, { targetPath })));
 			moveCopySuccess.value = t('drive.copySuccess');
 		}
 		await refreshCurrentFolder();
@@ -117,6 +129,7 @@ const {
 	clearFilter,
 	selectedCount,
 	primarySelectedFile,
+	selectedFileIds,
 	isSelected,
 	openContextMenu,
 	clearSelection,
@@ -368,6 +381,34 @@ function handleVisibilityChange() {
 	}
 }
 
+// custom: keyboard shortcuts — Delete (hapus), F2 (ganti nama), Escape (bersihkan pilihan), Ctrl/Cmd+A (pilih semua)
+function handleKeydown(event) {
+	const target = event.target;
+	if (target && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable)) return;
+	if (!selectedCount.value) {
+		if (event.key === 'a' && (event.ctrlKey || event.metaKey)) {
+			event.preventDefault();
+			sortedFiles.value.forEach((file) => selectedFileIds.value.add(file.id));
+			// paksa reaktivitas Set
+			selectedFileIds.value = new Set(selectedFileIds.value);
+		}
+		return;
+	}
+	if (event.key === 'Escape') {
+		clearSelection();
+	} else if (event.key === 'Delete' || event.key === 'Backspace') {
+		event.preventDefault();
+		deleteSelectedFile();
+	} else if (event.key === 'F2') {
+		event.preventDefault();
+		renameSelectedFile();
+	} else if (event.key.toLowerCase() === 'a' && (event.ctrlKey || event.metaKey)) {
+		event.preventDefault();
+		sortedFiles.value.forEach((file) => selectedFileIds.value.add(file.id));
+		selectedFileIds.value = new Set(selectedFileIds.value);
+	}
+}
+
 onMounted(async () => {
 	const initialPath = fileTreeStore.pendingPath || '/';
 	fileTreeStore.pendingPath = null;
@@ -376,6 +417,7 @@ onMounted(async () => {
 	window.addEventListener('dragend', resetDragState);
 	window.addEventListener('drop', resetDragState);
 	window.addEventListener('blur', resetDragState);
+	window.addEventListener('keydown', handleKeydown);
 	document.addEventListener('visibilitychange', handleVisibilityChange);
 });
 
@@ -384,6 +426,7 @@ onBeforeUnmount(() => {
 	window.removeEventListener('dragend', resetDragState);
 	window.removeEventListener('drop', resetDragState);
 	window.removeEventListener('blur', resetDragState);
+	window.removeEventListener('keydown', handleKeydown);
 	document.removeEventListener('visibilitychange', handleVisibilityChange);
 });
 </script>
@@ -412,7 +455,7 @@ onBeforeUnmount(() => {
 			</div>
 
 			<div class="mb-3 flex flex-col items-start justify-between gap-3 sm:flex-row sm:items-center">
-				<FileListSelectionBar v-if="selectedCount" :selected-count="selectedCount" :can-preview="canPreviewSelection" :can-toggle-star="canToggleStarSelection" :is-primary-starred="isPrimarySelectedStarred" :can-download="canDownloadSelection" :can-rename="canRenameSelection" :primary-file="primarySelectedFile" @clear="clearSelection" @preview="openPreview" @toggle-star="toggleSelectedFileStar" @download="downloadSelection" @rename="renameSelectedFile" @show-details="showSelectedFileDetails" @delete="deleteSelectedFile">
+				<FileListSelectionBar v-if="selectedCount" :selected-count="selectedCount" :can-preview="canPreviewSelection" :can-toggle-star="canToggleStarSelection" :is-primary-starred="isPrimarySelectedStarred" :can-download="canDownloadSelection" :can-rename="canRenameSelection" :can-move="true" :can-copy="true" :primary-file="primarySelectedFile" @clear="clearSelection" @preview="openPreview" @toggle-star="toggleSelectedFileStar" @download="downloadSelection" @rename="renameSelectedFile" @show-details="showSelectedFileDetails" @delete="deleteSelectedFile" @move="requestMove" @copy="requestCopy">
 					<template #prefix="{ primary }">
 						<button v-if="primary?.is_folder && selectedCount === 1" type="button" class="inline-flex size-9 items-center justify-center rounded-full transition enabled:hover:bg-[#d2e3fc] dark:enabled:hover:bg-sky-500/20" :title="t('common.open')" @click="openSelectedItem">
 							<IconFolder :size="18" :stroke="2" />

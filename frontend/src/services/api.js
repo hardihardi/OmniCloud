@@ -141,6 +141,24 @@ export const api = {
 			body: JSON.stringify({ ids: fileIds }),
 		});
 	},
+	purgeFiles(fileIds) {
+		return request('/files/bulk/purge', {
+			method: 'POST',
+			body: JSON.stringify({ ids: fileIds }),
+		});
+	},
+	emptyTrash() {
+		return request('/files/bulk/purge', {
+			method: 'POST',
+			body: JSON.stringify({ all: true }),
+		});
+	},
+	moveFiles(fileIds, payload) {
+		return request('/files/bulk/move', {
+			method: 'POST',
+			body: JSON.stringify({ ids: fileIds, ...payload }),
+		});
+	},
 	getGoogleIntegrationStatus() {
 		return request('/accounts/google/status');
 	},

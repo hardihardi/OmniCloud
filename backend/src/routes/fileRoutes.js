@@ -264,7 +264,8 @@ router.post('/files/bulk/delete', async (req, res, next) => {
 		}
 
 		const contexts = await Promise.all(ids.map(async (id) => ({ id, ...await getFileContext(req.user.id, id) })));
-		const invalid = contexts.find((context) => !context.file || !context.account || context.account.status !== 'active' || !context.adapter);
+		// custom: allow trashing files from a disconnected account — DB record still updates (best-effort remote)
+		const invalid = contexts.find((context) => !context.file || !context.account || !context.adapter);
 		if (invalid) {
 			return res.status(invalid.file ? 409 : 404).json({ error: invalid.file ? 'One or more file accounts are no longer connected' : 'One or more files were not found' });
 		}
@@ -275,10 +276,13 @@ router.post('/files/bulk/delete', async (req, res, next) => {
 			touchedAccountIds.add(context.account.id);
 		}
 
+		// custom: sync di background agar respons tidak menunggu remote Drive
 		for (const accountId of touchedAccountIds) {
 			const account = getAccountById(req.user.id, accountId);
 			if (account) {
-				await syncAccount(req.user.id, account);
+				syncAccount(req.user.id, account).catch((syncError) => {
+					console.warn('bulk delete: account sync failed:', syncError?.message || syncError);
+				});
 			}
 		}
 
@@ -399,6 +403,7 @@ router.delete('/files/:id', async (req, res, next) => {
 });
 
 router.post('/files/:id/restore', async (req, res, next) => {
+	if (req.params.id === 'bulk') return next(); // custom: biarkan /files/bulk/restore menangani
 	try {
 		const context = await getFileContext(req.user.id, req.params.id);
 		if (!ensureFileContext(context, res, { allowDisconnected: true })) {
@@ -438,29 +443,162 @@ router.post('/files/bulk/restore', async (req, res, next) => {
 		let restored = 0;
 		const touchedAccountIds = new Set();
 		for (const id of ids) {
-			const context = await getFileContext(req.user.id, id);
-			if (!context.file || !context.account || context.account.status !== 'active' || !context.adapter) continue;
-			const supportsTrash = Boolean(context.adapter.getCapabilities?.().trash);
+			// custom: gunakan row mentah — file dalam trash ter-filter dari getFileById
+			const file = getFileRowById(req.user.id, id) || getFileById(req.user.id, id);
+			const account = file ? getAccountById(req.user.id, file.cloud_account_id) : null;
+			const adapter = account ? createAdapter(account) : null;
+			if (!file || !account || !adapter) continue;
+			const supportsTrash = Boolean(adapter.getCapabilities?.().trash);
 			try {
 				if (supportsTrash) {
-					await context.adapter.restoreFile(context.file);
+					try {
+						await adapter.restoreFile(file);
+					} catch (remoteError) {
+						console.warn('bulk restore: remote restore failed (DB record still restored):', remoteError?.message || remoteError);
+					}
 				}
-				restoreFile(req.user.id, context.file.id);
+				restoreFile(req.user.id, file.id);
 				restored += 1;
-				touchedAccountIds.add(context.account.id);
+				touchedAccountIds.add(account.id);
 			} catch (error) {
 				// Keep restoring the rest.
+			}
+		}
+
+		// custom: sync background agar respons cepat
+		for (const accountId of touchedAccountIds) {
+			const account = getAccountById(req.user.id, accountId);
+			if (account) {
+				syncAccount(req.user.id, account).catch((syncError) => {
+					console.warn('bulk restore: account sync failed:', syncError?.message || syncError);
+				});
+			}
+		}
+
+		return res.json({ data: { success: true, count: restored } });
+	} catch (error) {
+		next(error);
+	}
+});
+
+// custom: bulk purge — permanently remove trashed records (optionally only the given ids)
+router.post('/files/bulk/purge', async (req, res, next) => {
+	try {
+		const ids = Array.isArray(req.body?.ids) ? [...new Set(req.body.ids.filter(Boolean))] : [];
+		const purgeAll = req.body?.all === true;
+		if (!purgeAll && !ids.length) {
+			return res.status(400).json({ error: 'At least one file id is required' });
+		}
+
+		const targets = purgeAll
+			? listTrashFiles(req.user.id).map((row) => row.id)
+			: ids;
+		if (!targets.length) {
+			return res.json({ data: { success: true, count: 0 } });
+		}
+
+		let purged = 0;
+		const touchedAccountIds = new Set();
+		for (const id of targets) {
+			// custom: row mentah — file trash ter-filter dari getFileById
+			const file = getFileRowById(req.user.id, id) || getFileById(req.user.id, id);
+			if (!file) continue;
+			const account = getAccountById(req.user.id, file.cloud_account_id);
+			const adapter = account ? createAdapter(account) : null;
+			try {
+				if (account && adapter) {
+					try {
+						await adapter.purgeFile(file);
+					} catch (remoteError) {
+						console.warn('bulk purge: remote purge failed (DB record still purged):', remoteError?.message || remoteError);
+					}
+					touchedAccountIds.add(account.id);
+				}
+				purgeFileRecord(req.user.id, file.id);
+				purged += 1;
+			} catch (error) {
+				// Keep purging the rest.
+			}
+		}
+
+		// custom: sync background agar respons cepat
+		for (const accountId of touchedAccountIds) {
+			const account = getAccountById(req.user.id, accountId);
+			if (account) {
+				syncAccount(req.user.id, account).catch((syncError) => {
+					console.warn('bulk purge: account sync failed:', syncError?.message || syncError);
+				});
+			}
+		}
+
+		return res.json({ data: { success: true, count: purged } });
+	} catch (error) {
+		next(error);
+	}
+});
+
+// custom: bulk move — move many files into one destination folder
+router.post('/files/bulk/move', async (req, res, next) => {
+	try {
+		const ids = Array.isArray(req.body?.ids) ? [...new Set(req.body.ids.filter(Boolean))] : [];
+		const { targetPath, targetFolderId } = req.body || {};
+		if (!ids.length) {
+			return res.status(400).json({ error: 'At least one file id is required' });
+		}
+		if (!targetPath && !targetFolderId) {
+			return res.status(400).json({ error: 'targetPath or targetFolderId is required' });
+		}
+
+		// Resolve destination once for the whole batch.
+		let targetFolder = null;
+		if (targetFolderId) {
+			targetFolder = getFileRowById(req.user.id, targetFolderId);
+			if (!targetFolder || !targetFolder.is_folder) {
+				return res.status(400).json({ error: 'Target folder not found' });
+			}
+		} else {
+			const normalizedTarget = String(targetPath || '/').startsWith('/') ? String(targetPath) : `/${targetPath}`;
+			targetFolder = listFilesByPath(req.user.id, normalizedTarget).find((item) => item.is_folder);
+		}
+		const nextPath = targetFolder?.virtual_path
+			|| normalizeTargetPath(String(targetPath || '/'));
+
+		let moved = 0;
+		const touchedAccountIds = new Set();
+		for (const id of ids) {
+			const context = await getFileContext(req.user.id, id);
+			if (!context.file || !context.account || !context.adapter || context.file.is_folder) continue;
+			const supportsMove = Boolean(context.adapter.getCapabilities?.().move);
+			if (!supportsMove) continue;
+			try {
+				const remoteParentId = targetFolder?.remote_file_id || context.adapter.account?.rootId || undefined;
+				if (remoteParentId) {
+					try {
+						await context.adapter.moveFile(context.file, remoteParentId);
+					} catch (remoteError) {
+						console.warn('bulk move: remote move failed (DB record still moved):', remoteError?.message || remoteError);
+					}
+				}
+				updateFilePath(req.user.id, context.file.id, nextPath);
+				moved += 1;
+				touchedAccountIds.add(context.account.id);
+			} catch (error) {
+				// Keep moving the rest.
 			}
 		}
 
 		for (const accountId of touchedAccountIds) {
 			const account = getAccountById(req.user.id, accountId);
 			if (account) {
-				await syncAccount(req.user.id, account);
+				try {
+					await syncAccount(req.user.id, account);
+				} catch (syncError) {
+					console.warn('bulk move: account sync failed:', syncError?.message || syncError);
+				}
 			}
 		}
 
-		return res.json({ data: { success: true, count: restored } });
+		return res.json({ data: { success: true, count: moved } });
 	} catch (error) {
 		next(error);
 	}
