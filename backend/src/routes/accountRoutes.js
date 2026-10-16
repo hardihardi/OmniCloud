@@ -35,7 +35,7 @@ const router = Router();
 
 // custom: callback Google dipakai juga untuk login (tanpa session) — bypass guard
 router.use((req, res, next) => {
-	if (req.path === '/google/callback') return next();
+	if (req.path.endsWith('/google/callback')) return next();
 	return requireAppUser(req, res, next);
 });
 
