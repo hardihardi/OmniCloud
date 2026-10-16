@@ -8,7 +8,9 @@ router.use(requireAppUser);
 
 function sharePayload(req, link) {
 	if (!link) return { shared: false };
-	const origin = req.headers.origin || `${req.protocol}://${req.get('host')}`;
+	const proto = req.headers['x-forwarded-proto'] || req.protocol;
+	const host = req.headers['x-forwarded-host'] || req.get('host');
+	const origin = `${proto}://${host}`;
 	return {
 		shared: true,
 		token: link.token,
