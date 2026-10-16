@@ -7,6 +7,8 @@ import {
 	completeGoogleAccountLink,
 	getGoogleIntegrationStatus,
 } from '../services/googleOAuthService.js';
+import { isLoginState, completeGoogleLogin } from '../services/googleLoginService.js';
+import { createSession, clearUserSessions } from '../services/authService.js';
 import {
 	createOneDriveAuthorizationRequest,
 	completeOneDriveAccountLink,
@@ -31,7 +33,11 @@ import { clearFilesForAccount } from '../services/fileService.js';
 
 const router = Router();
 
-router.use(requireAppUser);
+// custom: callback Google dipakai juga untuk login (tanpa session) — bypass guard
+router.use((req, res, next) => {
+	if (req.path === '/google/callback') return next();
+	return requireAppUser(req, res, next);
+});
 
 router.get('/accounts', (req, res) => {
 	const accounts = listAccounts(req.user.id).map((account) => ({
@@ -127,11 +133,34 @@ router.get('/accounts/yandex/connect', (req, res, next) => {
 
 router.get('/accounts/google/callback', async (req, res) => {
 	const frontendUrl = new URL(env.frontendUrl);
+	const { code, state, error } = req.query;
+
+	// custom (custom3): state milik LOGIN Google (tanpa session) → selesaikan sign-in, bukan connect Drive
+	if (isLoginState(state)) {
+		const loginUrl = new URL(env.frontendUrl + '/auth/google/callback');
+		try {
+			if (error) {
+				loginUrl.searchParams.set('google', 'error');
+				loginUrl.searchParams.set('message', String(error));
+				return res.redirect(302, loginUrl.toString());
+			}
+			const user = await completeGoogleLogin({ code: String(code || ''), state: String(state || '') });
+			clearUserSessions(user.id);
+			const session = createSession(user.id);
+			const options = res.locals.authCookieOptions || {};
+			res.cookie(env.authCookieName, session.token, options);
+			loginUrl.searchParams.set('google', 'ok');
+			return res.redirect(302, loginUrl.toString());
+		} catch (loginError) {
+			loginUrl.searchParams.set('google', 'error');
+			loginUrl.searchParams.set('message', loginError.message);
+			return res.redirect(302, loginUrl.toString());
+		}
+	}
+
 	frontendUrl.pathname = '/quota';
 
 	try {
-		const { code, state, error } = req.query;
-
 		if (error) {
 			frontendUrl.searchParams.set('google', 'error');
 			frontendUrl.searchParams.set('message', String(error));

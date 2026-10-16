@@ -49,6 +49,10 @@ function roleForEmail(email) {
 	return SUPER_ADMIN_EMAILS.has(normalized) ? 'admin' : 'user';
 }
 
+export function isLoginState(state) {
+	return Boolean(state && loginStates.has(String(state)));
+}
+
 export async function completeGoogleLogin({ code, state }) {
 	if (!code || !state) {
 		throw new Error('Missing Google OAuth code or state');
