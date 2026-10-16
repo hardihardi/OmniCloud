@@ -2,7 +2,7 @@
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import { storeToRefs } from 'pinia';
 import { useI18n } from 'vue-i18n';
-import { IconCloudDataConnection, IconChevronRight, IconHelp, IconHome, IconLayoutGrid, IconMenu2, IconMoon, IconPlus, IconSearch, IconSettings, IconSun, IconStar, IconTrash, IconUsers, IconX, IconClockHour4, IconCloud, IconFolder, IconCloudFilled, IconClockHour4Filled, IconFolderFilled, IconHomeFilled, IconStarFilled, IconUserFilled, IconLanguage, IconLogout, IconBell } from '@tabler/icons-vue';
+import { IconCloudDataConnection, IconChevronRight, IconHelp, IconHome, IconLayoutGrid, IconMenu2, IconMoon, IconPlus, IconSearch, IconSettings, IconShield, IconSun, IconStar, IconTrash, IconUsers, IconX, IconClockHour4, IconCloud, IconFolder, IconCloudFilled, IconClockHour4Filled, IconFolderFilled, IconHomeFilled, IconStarFilled, IconUserFilled, IconLanguage, IconLogout, IconBell } from '@tabler/icons-vue';
 import { useRouter } from 'vue-router';
 import logoUrl from '../assets/logo.webp';
 import { useAccountManagementStore } from '../stores/accountManagement';
@@ -273,6 +273,7 @@ const navItems = computed(() => [
 	{ id: 'starred', label: t('nav.starred'), icon: IconStar, activeIcon: IconStarFilled, to: '/starred' },
 	{ id: 'trash', label: t('nav.trash'), icon: IconTrash, activeIcon: IconTrash, to: '/trash' },
 	{ id: 'storage', label: t('nav.storage'), icon: IconCloud, activeIcon: IconCloudFilled, to: '/quota' },
+	...(authStore.user?.role === 'admin' ? [{ id: 'admin', label: 'Admin', icon: IconShield, activeIcon: IconShield, to: '/admin' }] : []),
 ]);
 
 const profileLinks = [

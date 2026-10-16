@@ -48,6 +48,49 @@ router.post('/auth/login', (req, res, next) => {
 	}
 });
 
+// custom (custom3): Google Sign-In endpoints — harus terdaftar sebelum router.use(requireAppUser) di fileRoutes
+import { createGoogleLoginRequest, completeGoogleLogin, getGoogleLoginStatus } from '../services/googleLoginService.js';
+
+router.get('/auth/google/status', (req, res) => {
+	res.json({ data: getGoogleLoginStatus() });
+});
+
+router.get('/auth/google', (req, res) => {
+	try {
+		const { authorizationUrl } = createGoogleLoginRequest();
+		return res.redirect(302, authorizationUrl);
+	} catch (error) {
+		const url = new URL(env.frontendUrl + '/auth/google/callback');
+		url.searchParams.set('google', 'error');
+		url.searchParams.set('message', error.message);
+		return res.redirect(302, url.toString());
+	}
+});
+
+router.get('/auth/google/callback', async (req, res) => {
+	try {
+		const { code, state, error } = req.query;
+		if (error) {
+			const url = new URL(env.frontendUrl + '/auth/google/callback');
+			url.searchParams.set('google', 'error');
+			url.searchParams.set('message', String(error));
+			return res.redirect(302, url.toString());
+		}
+		const user = await completeGoogleLogin({ code, state });
+		clearUserSessions(user.id);
+		const session = createSession(user.id);
+		setAuthCookie(res, session.token);
+		const url = new URL(env.frontendUrl + '/auth/google/callback');
+		url.searchParams.set('google', 'ok');
+		return res.redirect(302, url.toString());
+	} catch (loginError) {
+		const url = new URL(env.frontendUrl + '/auth/google/callback');
+		url.searchParams.set('google', 'error');
+		url.searchParams.set('message', loginError.message);
+		return res.redirect(302, url.toString());
+	}
+});
+
 router.post('/auth/logout', (req, res) => {
 	const cookieHeader = req.headers.cookie || '';
 	const token = cookieHeader

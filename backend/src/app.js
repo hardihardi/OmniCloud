@@ -7,6 +7,7 @@ import fileRoutes from './routes/fileRoutes.js';
 import uploadRoutes from './routes/uploadRoutes.js';
 import settingsRoutes from './routes/settingsRoutes.js';
 import allocationRoutes from './routes/allocationRoutes.js';
+import adminRoutes from './routes/adminRoutes.js';
 import { env } from './config/env.js';
 import { attachAuthContext } from './middleware/authMiddleware.js';
 
@@ -44,6 +45,7 @@ export function createApp() {
 	app.use('/api', uploadRoutes);
 	app.use('/api', settingsRoutes);
 	app.use('/api', allocationRoutes);
+	app.use('/api', adminRoutes);
 
 	app.use((error, _req, res, _next) => {
 		console.error(error);

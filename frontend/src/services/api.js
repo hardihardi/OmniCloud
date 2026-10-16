@@ -32,6 +32,9 @@ export const authApi = {
 			body: JSON.stringify(payload),
 		});
 	},
+	googleStatus() {
+		return request('/auth/google/status');
+	},
 	register(payload) {
 		return request('/auth/register', {
 			method: 'POST',
@@ -265,5 +268,22 @@ export const api = {
 			method: 'PATCH',
 			body: JSON.stringify(payload),
 		});
+	},
+};
+
+
+// custom (custom3): super admin
+export const adminApi = {
+	listUsers() {
+		return request('/admin/users');
+	},
+	setUserRole(userId, role) {
+		return request(`/admin/users/${userId}/role`, {
+			method: 'PATCH',
+			body: JSON.stringify({ role }),
+		});
+	},
+	deleteUser(userId) {
+		return request(`/admin/users/${userId}`, { method: 'DELETE' });
 	},
 };

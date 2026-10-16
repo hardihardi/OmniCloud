@@ -110,6 +110,8 @@ function ensureColumn(table, column, ddl) {
   }
 }
 
+ensureColumn('users', 'role', "role TEXT NOT NULL DEFAULT 'user'");
+ensureColumn('users', 'display_name', "display_name TEXT NOT NULL DEFAULT ''");
 ensureColumn('file_metadata', 'deleted_at', "deleted_at TEXT");
 ensureColumn('file_metadata', 'original_path', "original_path TEXT");
 

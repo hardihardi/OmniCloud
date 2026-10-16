@@ -8,6 +8,8 @@ import TrashView from '../views/TrashView.vue';
 import QuotaView from '../views/QuotaView.vue';
 import LoginView from '../views/auth/LoginView.vue';
 import RegisterView from '../views/auth/RegisterView.vue';
+import GoogleCallbackView from '../views/auth/GoogleCallbackView.vue';
+import AdminView from '../views/AdminView.vue';
 import { useAuthStore } from '../stores/auth';
 
 const router = createRouter({
@@ -24,6 +26,18 @@ const router = createRouter({
 			name: 'register',
 			component: RegisterView,
 			meta: { public: true },
+		},
+		{
+			path: '/auth/google/callback',
+			name: 'google-callback',
+			component: GoogleCallbackView,
+			meta: { public: true },
+		},
+		{
+			path: '/admin',
+			name: 'admin',
+			component: AdminView,
+			meta: { adminOnly: true },
 		},
 		{
 			path: '/',
@@ -80,6 +94,10 @@ router.beforeEach(async (to) => {
 
 	if (!authStore.authenticated) {
 		return { path: '/login', query: to.fullPath === '/' ? {} : { redirect: to.fullPath } };
+	}
+
+	if (to.meta.adminOnly && authStore.user?.role !== 'admin') {
+		return { path: '/' };
 	}
 
 	return true;

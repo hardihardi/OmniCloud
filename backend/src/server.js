@@ -29,6 +29,9 @@ process.on('uncaughtException', (error) => {
 	console.error('Uncaught exception:', error);
 });
 
+import { ensureSuperAdmin } from './services/superAdminBoot.js';
+ensureSuperAdmin();
+
 const app = createApp();
 const server = http.createServer(app);
 const wss = new WebSocketServer({ server, path: '/ws/uploads' });

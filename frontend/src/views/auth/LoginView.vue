@@ -11,6 +11,8 @@ const router = useRouter();
 const authStore = useAuthStore();
 
 const form = reactive({ email: '', password: '' });
+// custom (custom3): Google Sign-In — langsung ke endpoint API
+const googleUrl = `${(import.meta.env.VITE_API_BASE_URL || 'http://localhost:8787/api')}/auth/google`;
 const localError = ref('');
 
 const isBusy = computed(() => authStore.loading);
