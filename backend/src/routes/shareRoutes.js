@@ -1,5 +1,6 @@
 import { Router } from 'express';
 import { requireAppUser } from '../middleware/authMiddleware.js';
+import { env } from '../config/env.js';
 import { createShareLink, getShareStatus, revokeShareLink } from '../services/shareService.js';
 
 // custom4: authenticated share-link management (public access lives in shareRoutes.js)
@@ -8,9 +9,9 @@ router.use(requireAppUser);
 
 function sharePayload(req, link) {
 	if (!link) return { shared: false };
-	const proto = req.headers['x-forwarded-proto'] || req.protocol;
-	const host = req.headers['x-forwarded-host'] || req.get('host');
-	const origin = `${proto}://${host}`;
+	const proto = req.headers['x-forwarded-proto'];
+	const host = req.headers['x-forwarded-host'];
+	const origin = (proto && host) ? `${proto.split(',')[0].trim()}://${host.split(',')[0].trim()}` : env.frontendUrl;
 	return {
 		shared: true,
 		token: link.token,
@@ -34,7 +35,6 @@ router.get('/files/:id/share', async (req, res, next) => {
 router.post('/files/:id/share', async (req, res, next) => {
 	try {
 		const expiresInDays = req.body?.expiresInDays ?? null;
-		console.error('DBG userId=', req.user?.id, 'fileId=', req.params.id);
 		const link = createShareLink(req.user.id, req.params.id, { expiresInDays });
 		return res.status(link.reused ? 200 : 201).json(sharePayload(req, link));
 	} catch (error) {
